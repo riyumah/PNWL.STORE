@@ -180,12 +180,13 @@ function deleteProduct(id) {
   return true;
 }
 
-function createOrder({ invoice, player_id, whatsapp, payment_method, total, items }) {
+function createOrder({ invoice, player_id, world_name, whatsapp, payment_method, total, items }) {
   const orderId = db.nextIds.orders++;
   db.orders.push({
     id: orderId,
     invoice,
     player_id,
+    world_name: world_name || '',
     whatsapp: whatsapp || '',
     payment_method,
     total,
@@ -244,6 +245,24 @@ function updateOrderStatus(invoice, status) {
 
   const order = db.orders.find(o => o.invoice === invoice);
   if (!order) return false;
+
+  const items = db.order_items.filter(i => i.order_id === order.id);
+
+  // Order dibatalkan -> stok dikembalikan (hanya produk berstok terbatas)
+  if (status === 'CANCELLED' && order.status !== 'CANCELLED' && !order.stock_restored) {
+    for (const it of items) {
+      const prod = db.products.find(p => p.id === it.product_id);
+      if (prod && prod.stock >= 0) prod.stock += it.quantity;
+    }
+    order.stock_restored = true;
+  } else if (status !== 'CANCELLED' && order.status === 'CANCELLED' && order.stock_restored) {
+    // Dibuka lagi dari CANCELLED -> stok dipotong lagi
+    for (const it of items) {
+      const prod = db.products.find(p => p.id === it.product_id);
+      if (prod && prod.stock >= 0) prod.stock = Math.max(0, prod.stock - it.quantity);
+    }
+    order.stock_restored = false;
+  }
 
   order.status = status;
   order.updated_at = now();
