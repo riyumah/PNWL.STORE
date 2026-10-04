@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PNWL.STORE - Growtopia Top Up & Service</title>
+  <meta name="description" content="Top Up Growtopia cepat, aman, dan terpercaya. PNWL.STORE - RGT Store & GTPS Store.">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <div class="logo-icon">PN</div>
+        <span>PNWL.STORE</span>
+      </a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Menu">☰</button>
+      <nav class="nav" id="mainNav">
+        <a href="#" class="nav-link active" data-page="home">Home</a>
+        <a href="#" class="nav-link" data-page="rgt">RGT Store</a>
+        <a href="#" class="nav-link" data-page="gtps">GTPS Store</a>
+        <a href="#" class="nav-link" data-page="status">Order Status</a>
+      </nav>
+      <button class="cart-btn" id="cartBtn">
+        🛒 Cart
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- HOME PAGE -->
+    <section id="page-home">
+      <div class="hero">
+        <h1>TOP UP & SERVICE GROWTOPIA</h1>
+        <p>Fast, Simple & Trusted</p>
+        <button class="btn btn-primary" id="btnBeliSekarang">BELI SEKARANG</button>
+      </div>
+
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Cari produk... (Diamond Lock, BGL, God, VIP...)">
+      </div>
+
+      <div class="store-selector">
+        <div class="store-card" data-store="RGT">
+          <h3>RGT STORE</h3>
+          <p>Diamond Lock • Blue Gem Lock</p>
+        </div>
+        <div class="store-card" data-store="GTPS">
+          <h3>GTPS STORE</h3>
+          <p>BGL • BBGL • Custom Item • Role</p>
+        </div>
+      </div>
+
+      <div id="homeProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- RGT STORE PAGE -->
+    <section id="page-rgt" style="display:none;">
+      <div class="hero" style="padding-bottom:20px;">
+        <h1>RGT STORE</h1>
+        <p>Diamond Lock & Blue Gem Lock</p>
+      </div>
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchRgt" placeholder="Cari di RGT Store...">
+      </div>
+      <div id="rgtProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- GTPS STORE PAGE -->
+    <section id="page-gtps" style="display:none;">
+      <div class="hero" style="padding-bottom:20px;">
+        <h1>GTPS STORE</h1>
+        <p>BGL • BBGL • Custom Item • Role</p>
+      </div>
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchGtps" placeholder="Cari di GTPS Store...">
+      </div>
+      <div id="gtpsProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- ORDER STATUS PAGE -->
+    <section id="page-status" style="display:none;">
+      <div class="status-section">
+        <h2 class="section-title">Cek Status Order</h2>
+        <div class="form-group">
+          <label>Nomor Invoice</label>
+          <input type="text" id="invoiceInput" placeholder="PNWL-XXXXXXXX">
+        </div>
+        <button class="btn btn-primary" id="btnCekStatus" style="width:100%;">CEK STATUS</button>
+
+        <div class="status-result" id="statusResult">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2025 PNWL.STORE. All rights reserved.</p>
+    <p style="margin-top:4px;">Growtopia Top Up & Service</p>
+  </footer>
+
+  <!-- Cart Overlay -->
+  <div class="cart-overlay" id="cartOverlay">
+    <div class="cart-drawer">
+      <div class="cart-header">
+        <h3>🛒 Keranjang</h3>
+        <button class="cart-close" id="cartClose">&times;</button>
+      </div>
+      <div class="cart-body" id="cartBody">
+        <div class="cart-empty">Keranjang masih kosong</div>
+      </div>
+      <div class="cart-footer">
+        <div class="cart-total">
+          <span>Total</span>
+          <span id="cartTotal">Rp0</span>
+        </div>
+        <button class="btn btn-primary" id="btnCheckout" style="width:100%;" disabled>CHECKOUT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Role Modal -->
+  <div class="modal-overlay" id="roleModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>SELECT ROLE</h3>
+        <button class="modal-close" data-close="roleModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="role-list" id="roleList">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="roleModal">Batal</button>
+        <button class="btn btn-primary" id="btnAddRole" disabled>Tambah ke Cart</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Modal -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Checkout</h3>
+        <button class="modal-close" data-close="checkoutModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>GrowID / Player ID *</label>
+          <input type="text" id="playerId" placeholder="Masukkan GrowID kamu" required>
+        </div>
+        <div class="form-group">
+          <label>Nomor WhatsApp (opsional)</label>
+          <input type="text" id="whatsapp" placeholder="08xxxxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label>Metode Pembayaran *</label>
+          <select id="paymentMethod">
+            <option value="QRIS">QRIS</option>
+            <option value="DANA">DANA</option>
+            <option value="OVO">OVO</option>
+            <option value="GoPay">GoPay</option>
+            <option value="Transfer Bank">Transfer Bank</option>
+          </select>
+        </div>
+        <div class="invoice-detail" id="checkoutSummary">
+          <!-- Summary -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="checkoutModal">Batal</button>
+        <button class="btn btn-primary" id="btnConfirmOrder">Buat Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div class="modal-overlay" id="successModal">
+    <div class="modal">
+      <div class="modal-body">
+        <div class="invoice-box" id="successContent">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:center; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btnLihatStatus">Lihat Status Order</button>
+        <button class="btn btn-secondary" data-close="successModal" id="btnKembaliStore">Kembali ke Store</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
