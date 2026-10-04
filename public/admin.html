@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Admin - PNWL.STORE</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="admin-body">
+
+  <!-- LOGIN PAGE -->
+  <div id="loginPage" class="login-page">
+    <div class="login-box">
+      <div style="text-align:center;margin-bottom:8px;">
+        <div class="logo-icon" style="margin:0 auto 12px;width:48px;height:48px;font-size:1rem;">PN</div>
+      </div>
+      <h2>Admin Login</h2>
+      <p class="subtitle">PNWL.STORE Dashboard</p>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="loginUsername" placeholder="Username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" id="btnLogin" style="width:100%;margin-top:8px;">Login</button>
+      <p id="loginError" style="color:var(--danger);font-size:0.85rem;text-align:center;margin-top:12px;display:none;"></p>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboardPage" class="admin-layout" style="display:none;">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="logo">
+        <div class="logo-icon">PN</div>
+        <span>ADMIN</span>
+      </div>
+      <nav class="admin-nav">
+        <a data-panel="dashboard" class="active">📊 Dashboard</a>
+        <a data-panel="products">📦 Products</a>
+        <a data-panel="roles">👑 Roles</a>
+        <a data-panel="orders">📋 Orders</a>
+        <a data-panel="settings">⚙️ Settings</a>
+        <a id="btnLogout" style="margin-top:20px;color:var(--danger);">🚪 Logout</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="admin-main">
+      <div class="admin-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="admin-menu-toggle" id="adminMenuToggle">☰</button>
+          <h1 id="panelTitle">Dashboard</h1>
+        </div>
+        <div class="admin-user">
+          <span id="adminUsername">admin</span>
+        </div>
+      </div>
+
+      <!-- Dashboard Panel -->
+      <div class="admin-panel active" id="panel-dashboard">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card"><div class="label">Total Orders</div><div class="value" id="statTotal">-</div></div>
+          <div class="stat-card"><div class="label">Pending</div><div class="value" id="statPending">-</div></div>
+          <div class="stat-card"><div class="label">Completed</div><div class="value" id="statCompleted">-</div></div>
+          <div class="stat-card"><div class="label">Revenue</div><div class="value" id="statRevenue">-</div></div>
+        </div>
+      </div>
+
+      <!-- Products Panel -->
+      <div class="admin-panel" id="panel-products">
+        <div class="panel-actions">
+          <button class="btn btn-primary btn-sm" id="btnAddProduct">+ Tambah Produk</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Store</th>
+                <th>Nama</th>
+                <th>Harga</th>
+                <th>Stok</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="productsTableBody">
+              <tr><td colspan="7" style="text-align:center;">Memuat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Roles Panel -->
+      <div class="admin-panel" id="panel-roles">
+        <p style="color:var(--text-secondary);margin-bottom:16px;font-size:0.9rem;">Ubah harga role. Perubahan langsung berlaku di website pembeli.</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Role</th>
+                <th>Harga</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="rolesTableBody">
+              <tr><td colspan="4" style="text-align:center;">Memuat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Orders Panel -->
+      <div class="admin-panel" id="panel-orders">
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Player ID</th>
+                <th>Produk</th>
+                <th>Total</th>
+                <th>Bayar</th>
+                <th>Status</th>
+                <th>Tanggal</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+              <tr><td colspan="8" style="text-align:center;">Memuat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="admin-panel" id="panel-settings">
+        <div class="stat-card" style="max-width:400px;">
+          <div class="label">Admin Username</div>
+          <div class="value" style="font-size:1.1rem;" id="settingsUsername">-</div>
+          <p style="color:var(--text-muted);font-size:0.85rem;margin-top:12px;">
+            Untuk mengubah password admin, edit file <code>.env</code> lalu restart server.
+            Password di-hash dengan bcrypt dan tidak disimpan plaintext.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Product Modal -->
+  <div class="modal-overlay" id="productModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="productModalTitle">Tambah Produk</h3>
+        <button class="modal-close" data-close="productModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editProductId">
+        <div class="form-group">
+          <label>Store</label>
+          <select id="prodStore">
+            <option value="RGT">RGT</option>
+            <option value="GTPS">GTPS</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Nama Produk</label>
+          <input type="text" id="prodName" placeholder="Nama produk">
+        </div>
+        <div class="form-group">
+          <label>Deskripsi</label>
+          <input type="text" id="prodDesc" placeholder="Deskripsi singkat">
+        </div>
+        <div class="form-group">
+          <label>Harga (Rp)</label>
+          <input type="number" id="prodPrice" placeholder="4500" min="0">
+        </div>
+        <div class="form-group">
+          <label>Tipe</label>
+          <select id="prodType">
+            <option value="currency">Currency</option>
+            <option value="custom_item">Custom Item</option>
+            <option value="role">Role</option>
+          </select>
+        </div>
+        <div class="form-group" id="roleIdGroup" style="display:none;">
+          <label>Role ID (1-7)</label>
+          <input type="number" id="prodRoleId" min="1" max="7" placeholder="1">
+        </div>
+        <div class="form-group">
+          <label>Stok (-1 = unlimited)</label>
+          <input type="number" id="prodStock" value="-1">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="prodActive">
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="productModal">Batal</button>
+        <button class="btn btn-primary" id="btnSaveProduct">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Role Price Modal -->
+  <div class="modal-overlay" id="rolePriceModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Ubah Harga Role</h3>
+        <button class="modal-close" data-close="rolePriceModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editRoleId">
+        <div class="form-group">
+          <label>Role</label>
+          <input type="text" id="editRoleName" readonly>
+        </div>
+        <div class="form-group">
+          <label>Harga Baru (Rp)</label>
+          <input type="number" id="editRolePrice" min="0">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="rolePriceModal">Batal</button>
+        <button class="btn btn-primary" id="btnSaveRolePrice">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Status Modal -->
+  <div class="modal-overlay" id="orderStatusModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Ubah Status Order</h3>
+        <button class="modal-close" data-close="orderStatusModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editOrderInvoice">
+        <div class="form-group">
+          <label>Invoice</label>
+          <input type="text" id="editOrderInvoiceDisplay" readonly>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="editOrderStatus">
+            <option value="PENDING">PENDING</option>
+            <option value="PAID">PAID</option>
+            <option value="PROCESSING">PROCESSING</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="orderStatusModal">Batal</button>
+        <button class="btn btn-primary" id="btnSaveOrderStatus">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
