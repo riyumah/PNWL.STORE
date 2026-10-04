@@ -23,7 +23,16 @@ const {
   getAdminByUsername
 } = require('./database');
 
+const fs = require('fs');
 const app = express();
+
+// Diagnosa: tampilkan isi folder di server saat start (muncul di Deploy Logs)
+try {
+  console.log('[DIAG] __dirname =', __dirname);
+  console.log('[DIAG] isi root   =', fs.readdirSync(__dirname).join(', '));
+  const pub = path.join(__dirname, 'public');
+  console.log('[DIAG] isi public =', fs.existsSync(pub) ? fs.readdirSync(pub).join(', ') : '(FOLDER public TIDAK ADA)');
+} catch (e) { console.error('[DIAG] gagal baca folder:', e.message); }
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
