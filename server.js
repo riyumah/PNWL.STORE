@@ -206,6 +206,8 @@ app.get('/api/products/:id', (req, res) => {
 app.post('/api/orders', orderLimiter, (req, res) => {
   try {
     const { items, player_id, whatsapp, payment_method } = req.body;
+    const world_name = String(req.body.world_name || '').trim().slice(0, 40);
+    let needsWorld = false;
 
     // Validation
     if (!player_id || typeof player_id !== 'string' || player_id.trim().length < 2) {
@@ -241,6 +243,8 @@ app.post('/api/orders', orderLimiter, (req, res) => {
         return res.status(400).json({ success: false, message: `Produk tidak ditemukan atau nonaktif (ID: ${productId})` });
       }
 
+      if (product.type === 'currency') needsWorld = true;
+
       // Stock check
       if (product.stock === 0) {
         return res.status(400).json({ success: false, message: `${product.name} sudah SOLD OUT` });
@@ -264,12 +268,17 @@ app.post('/api/orders', orderLimiter, (req, res) => {
       });
     }
 
+    if (needsWorld && world_name.length < 2) {
+      return res.status(400).json({ success: false, message: 'Nama World wajib diisi untuk pembelian DL/BGL' });
+    }
+
     // Generate unique invoice
     const invoice = 'PNWL-' + uuidv4().replace(/-/g, '').substring(0, 8).toUpperCase();
 
     createOrder({
       invoice,
       player_id: player_id.trim(),
+      world_name: needsWorld ? world_name : '',
       whatsapp: (whatsapp || '').trim(),
       payment_method,
       total,
@@ -281,6 +290,7 @@ app.post('/api/orders', orderLimiter, (req, res) => {
       data: {
         invoice,
         player_id: player_id.trim(),
+        world_name: needsWorld ? world_name : '',
         total,
         items: orderItems.map(i => ({
           name: i.product_name,
