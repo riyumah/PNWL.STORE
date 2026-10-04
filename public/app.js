@@ -411,6 +411,9 @@
       `<div class="row" style="margin-top:8px;font-weight:700;"><span class="label">Total</span><span class="value" style="color:var(--accent)">${formatPrice(total)}</span></div>`;
 
     $('#playerId').value = '';
+    $('#worldName').value = '';
+    // Nama world hanya diminta kalau ada DL/BGL (produk currency) di cart
+    $('#worldGroup').style.display = cart.some(i => i.type === 'currency') ? 'block' : 'none';
     $('#whatsapp').value = '';
     $('#paymentMethod').value = 'QRIS';
 
@@ -422,9 +425,16 @@
     const playerId = $('#playerId').value.trim();
     const whatsapp = $('#whatsapp').value.trim();
     const paymentMethod = $('#paymentMethod').value;
+    const worldName = $('#worldName').value.trim();
+    const needsWorld = cart.some(i => i.type === 'currency');
 
     if (!playerId || playerId.length < 2) {
       showToast('GrowID / Player ID wajib diisi', 'error');
+      return;
+    }
+
+    if (needsWorld && worldName.length < 2) {
+      showToast('Nama World wajib diisi untuk pembelian DL/BGL', 'error');
       return;
     }
 
@@ -434,6 +444,7 @@
 
     const payload = {
       player_id: playerId,
+      world_name: needsWorld ? worldName : '',
       whatsapp,
       payment_method: paymentMethod,
       items: cart.map(c => ({
@@ -537,6 +548,7 @@
       <div class="invoice-detail">
         <div class="row"><span class="label">Invoice</span><span class="value">${data.invoice}</span></div>
         <div class="row"><span class="label">Player ID</span><span class="value">${escapeHtml(data.player_id)}</span></div>
+        ${data.world_name ? `<div class="row"><span class="label">Nama World</span><span class="value">${escapeHtml(data.world_name)}</span></div>` : ''}
         ${itemsHtml}
         <div class="row"><span class="label">Total</span><span class="value" style="color:var(--accent)">${formatPrice(data.total)}</span></div>
         <div class="row"><span class="label">Status</span><span class="value"><span class="badge badge-pending">PENDING</span></span></div>
@@ -606,6 +618,7 @@
       <div class="invoice-detail">
         <div class="row"><span class="label">Invoice</span><span class="value">${o.invoice}</span></div>
         <div class="row"><span class="label">Player ID</span><span class="value">${escapeHtml(o.player_id)}</span></div>
+        ${o.world_name ? `<div class="row"><span class="label">Nama World</span><span class="value">${escapeHtml(o.world_name)}</span></div>` : ''}
         <div class="row"><span class="label">WhatsApp</span><span class="value">${escapeHtml(o.whatsapp || '-')}</span></div>
         <div class="row"><span class="label">Pembayaran</span><span class="value">${o.payment_method}</span></div>
         ${itemsHtml}
