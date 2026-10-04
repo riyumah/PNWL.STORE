@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const dataDir = path.join(__dirname, 'data');
+// Di Railway: pasang Volume lalu set DATA_DIR=/data supaya data tidak hilang tiap deploy
+const dataDir = process.env.DATA_DIR || path.join(__dirname, 'data');
 const dbPath = path.join(dataDir, 'db.json');
 
 if (!fs.existsSync(dataDir)) {
@@ -41,17 +42,32 @@ function initDatabase() {
 
   // Seed admin
   const username = process.env.ADMIN_USERNAME || 'admin';
-  const password = process.env.ADMIN_PASSWORD || '=#gajah12343';
+  let password = (process.env.ADMIN_PASSWORD || '').trim();
+  const existing = db.admins.find(a => a.username === username);
 
-  if (!db.admins.find(a => a.username === username)) {
-    const hash = bcrypt.hashSync(password, 12);
+  if (!password) {
+    if (process.env.NODE_ENV === 'production' && !existing) {
+      console.error('❌ ADMIN_PASSWORD belum diisi di Variables Railway.');
+      process.exit(1);
+    }
+    if (!existing) {
+      password = require('crypto').randomBytes(9).toString('hex');
+      console.log(`[SEED] ADMIN_PASSWORD kosong, password sementara: ${password}`);
+    }
+  }
+
+  if (!existing) {
     db.admins.push({
       id: db.nextIds.admins++,
       username,
-      password_hash: hash,
+      password_hash: bcrypt.hashSync(password, 12),
       created_at: now()
     });
     console.log(`[SEED] Admin created: ${username}`);
+  } else if (password && !bcrypt.compareSync(password, existing.password_hash)) {
+    // Password di env berubah -> ikut diperbarui
+    existing.password_hash = bcrypt.hashSync(password, 12);
+    console.log(`[SEED] Password admin '${username}' diperbarui dari env`);
   }
 
   // Seed products
