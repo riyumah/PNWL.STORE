@@ -201,7 +201,11 @@
         <td>${p.store}</td>
         <td>${escapeHtml(p.name)}</td>
         <td>${formatPrice(p.price)}</td>
-        <td>${p.stock === -1 ? '∞' : p.stock}</td>
+        <td style="white-space:nowrap;">
+          <input type="number" class="stock-input" data-id="${p.id}" value="${p.stock}" min="-1" style="width:70px;padding:4px 6px;">
+          <button class="btn btn-primary btn-sm btn-save-stock" data-id="${p.id}">Simpan</button>
+          <button class="btn btn-secondary btn-sm btn-unlimited" data-id="${p.id}" title="Stok tak terbatas">∞</button>
+        </td>
         <td><span class="badge ${p.active ? 'badge-completed' : 'badge-cancelled'}">${p.active ? 'ACTIVE' : 'OFF'}</span></td>
         <td>
           <button class="btn btn-secondary btn-sm btn-edit-prod" data-id="${p.id}">Edit</button>
@@ -211,6 +215,35 @@
         </td>
       </tr>
     `).join('');
+
+    async function setStock(id, stock) {
+      const r = await api(`/api/admin/products/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ stock })
+      });
+      if (r.success) {
+        showToast(stock === -1 ? 'Stok: tak terbatas' : `Stok diubah jadi ${stock}`);
+        loadProducts();
+      } else {
+        showToast(r.message || 'Gagal ubah stok', 'error');
+      }
+    }
+
+    tbody.querySelectorAll('.btn-save-stock').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = tbody.querySelector(`.stock-input[data-id="${btn.dataset.id}"]`);
+        const val = parseInt(input.value, 10);
+        if (isNaN(val) || val < -1) {
+          showToast('Stok harus angka 0 atau lebih (-1 = tak terbatas)', 'error');
+          return;
+        }
+        setStock(parseInt(btn.dataset.id, 10), val);
+      });
+    });
+
+    tbody.querySelectorAll('.btn-unlimited').forEach(btn => {
+      btn.addEventListener('click', () => setStock(parseInt(btn.dataset.id, 10), -1));
+    });
 
     tbody.querySelectorAll('.btn-edit-prod').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -378,12 +411,12 @@
     const tbody = $('#ordersTableBody');
 
     if (!res.success) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Gagal memuat</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Gagal memuat</td></tr>';
       return;
     }
 
     if (res.data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Belum ada order</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Belum ada order</td></tr>';
       return;
     }
 
@@ -399,6 +432,7 @@
       <tr>
         <td><strong>${o.invoice}</strong></td>
         <td>${escapeHtml(o.player_id)}</td>
+        <td>${escapeHtml(o.world_name || '-')}</td>
         <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.products || '-')}</td>
         <td>${formatPrice(o.total)}</td>
         <td>${o.payment_method}</td>
