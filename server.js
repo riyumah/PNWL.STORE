@@ -63,7 +63,10 @@ app.use((req, res, next) => {
 // Middleware
 app.use(express.json({ limit: '50kb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+
+// Health check (buat cek server hidup di Railway)
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Session
 app.use(session({
@@ -483,14 +486,25 @@ app.put('/api/admin/orders/:invoice/status', requireAdmin, (req, res) => {
   }
 });
 
-// Serve frontend
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Serve frontend (pakai root + callback supaya error-nya jelas di log)
+function sendPage(file) {
+  return (req, res, next) => {
+    res.sendFile(file, { root: path.join(__dirname, 'public') }, (err) => {
+      if (err) {
+        console.error(`[PAGE ERROR] ${req.method} ${req.originalUrl} -> ${file}:`, err.code || '', err.message);
+        if (!res.headersSent) {
+          res.status(err.code === 'ENOENT' ? 404 : 500).send(
+            err.code === 'ENOENT' ? `File public/${file} tidak ditemukan di server` : 'Gagal memuat halaman'
+          );
+        }
+      }
+    });
+  };
+}
 
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+app.get('/', sendPage('index.html'));
+app.get('/admin', sendPage('admin.html'));
+app.get('/admin/', sendPage('admin.html'));
 
 // 404
 app.use((req, res) => {
@@ -499,11 +513,15 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ success: false, message: 'Internal server error' });
+  console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  res.status(err && err.status ? err.status : 500).json({ success: false, message: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 PNWL.STORE running at http://localhost:${PORT}`);
   console.log(`📱 Admin panel: http://localhost:${PORT}/admin`);
   if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'ganti_password_admin_yang_kuat') {
