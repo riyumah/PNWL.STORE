@@ -500,9 +500,10 @@
           <div class="row"><span class="label">Total Bayar</span><span class="value" style="color:var(--accent)">${formatPrice(p.total)}</span></div>
         </div>
         ${warn}
+        <p class="pay-warn"><strong>Jangan lupa di-screenshot ya!</strong> ${p.is_lock ? 'Screenshot saat kamu drop lock (nama world dan GrowID harus terlihat) sebagai bukti.' : 'Simpan bukti pembayaran untuk dikirim ke admin.'}</p>
         <ol class="pay-steps">
-          <li>Bayar sesuai total di atas.</li>
-          <li>Simpan bukti pembayaran (screenshot).</li>
+          <li>${p.is_lock ? 'Masuk ke world di atas, lalu drop lock sesuai jumlah bayar.' : 'Bayar sesuai total di atas.'}</li>
+          <li>${p.is_lock ? 'Screenshot saat drop lock (terlihat nama world dan GrowID kamu).' : 'Simpan bukti pembayaran (screenshot).'}</li>
           <li>Kirim bukti beserta nomor invoice <strong>${escapeHtml(p.invoice)}</strong> ke admin.</li>
           <li>Order diproses setelah pembayaran dikonfirmasi admin.</li>
         </ol>
