@@ -123,6 +123,7 @@ function buildPayment(method, total, invoice) {
   const clean = (v) => (v || '').trim();
   let lines = [];
   let image = '';
+  let isLock = false;
 
   if (method === 'QRIS') {
     image = clean(e.PAY_QRIS_IMAGE);
@@ -132,6 +133,18 @@ function buildPayment(method, total, invoice) {
       { label: 'Nomor ' + method, value: clean(e['PAY_' + key + '_NUMBER']), copy: true },
       { label: 'Atas Nama', value: clean(e['PAY_' + key + '_NAME']) }
     ];
+  } else if (method === 'DL' || method === 'BGL') {
+    // Bayar pakai lock di dalam game: pembeli drop lock di world milik toko
+    const rate = Number(clean(e['PAY_' + method + '_RATE'])) || (method === 'DL' ? 4500 : 85000);
+    const qty = Math.ceil(Number(total) / rate);
+    const name = method === 'DL' ? 'Diamond Lock (DL)' : 'Blue Gem Lock (BGL)';
+    lines = [
+      { label: 'Jumlah Bayar', value: qty + ' ' + method },
+      { label: 'Nama World', value: clean(e.PAY_WORLD_NAME), copy: true },
+      { label: 'Owner World', value: clean(e.PAY_WORLD_OWNER) },
+      { label: 'Kurs', value: '1 ' + name + ' = Rp' + rate.toLocaleString('id-ID') }
+    ];
+    isLock = true;
   } else if (method === 'Transfer Bank') {
     lines = [
       { label: 'Bank', value: clean(e.PAY_BANK_NAME) },
@@ -151,7 +164,7 @@ function buildPayment(method, total, invoice) {
     waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
   }
 
-  return { method, total, invoice, configured, image, lines, wa_link: waLink };
+  return { method, total, invoice, configured, image, lines, is_lock: isLock, wa_link: waLink };
 }
 
 // Auth middleware
@@ -199,7 +212,7 @@ app.post('/api/orders', orderLimiter, (req, res) => {
       return res.status(400).json({ success: false, message: 'Player ID / GrowID wajib diisi (min 2 karakter)' });
     }
 
-    if (!payment_method || !['QRIS', 'DANA', 'OVO', 'GoPay', 'Transfer Bank'].includes(payment_method)) {
+    if (!payment_method || !['QRIS', 'DANA', 'OVO', 'GoPay', 'Transfer Bank', 'DL', 'BGL'].includes(payment_method)) {
       return res.status(400).json({ success: false, message: 'Metode pembayaran tidak valid' });
     }
 
