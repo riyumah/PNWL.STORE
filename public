@@ -272,3 +272,2602 @@
   <script src="/admin.js"></script>
 </body>
 </html>
+/* PNWL.STORE - Admin Panel */
+(function () {
+  'use strict';
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  let currentPanel = 'dashboard';
+
+  // ========== API ==========
+  async function api(url, options = {}) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        ...options
+      });
+      return await res.json();
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: 'Koneksi gagal' };
+    }
+  }
+
+  // ========== INIT ==========
+  async function init() {
+    const me = await api('/api/admin/me');
+    if (me.success) {
+      showDashboard(me.data.username);
+    } else {
+      showLogin();
+    }
+    setupEvents();
+  }
+
+  function showLogin() {
+    $('#loginPage').style.display = 'flex';
+    $('#dashboardPage').style.display = 'none';
+  }
+
+  function showDashboard(username) {
+    $('#loginPage').style.display = 'none';
+    $('#dashboardPage').style.display = 'flex';
+    $('#adminUsername').textContent = username;
+    $('#settingsUsername').textContent = username;
+    loadDashboard();
+  }
+
+  // ========== EVENTS ==========
+  function setupEvents() {
+    // Login
+    $('#btnLogin').addEventListener('click', doLogin);
+    $('#loginPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+    $('#loginUsername').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('#loginPassword').focus();
+    });
+
+    // Logout
+    $('#btnLogout').addEventListener('click', doLogout);
+
+    // Sidebar nav
+    $$('.admin-nav a[data-panel]').forEach(link => {
+      link.addEventListener('click', () => {
+        const panel = link.dataset.panel;
+        switchPanel(panel);
+        $$('.admin-nav a').forEach(a => a.classList.remove('active'));
+        link.classList.add('active');
+        $('#adminSidebar').classList.remove('open');
+      });
+    });
+
+    // Mobile menu
+    $('#adminMenuToggle').addEventListener('click', () => {
+      $('#adminSidebar').classList.toggle('open');
+    });
+
+    // Product modal
+    $('#btnAddProduct').addEventListener('click', () => openProductModal());
+    $('#btnSaveProduct').addEventListener('click', saveProduct);
+    $('#prodType').addEventListener('change', () => {
+      $('#roleIdGroup').style.display = $('#prodType').value === 'role' ? 'block' : 'none';
+    });
+
+    // Role price
+    $('#btnSaveRolePrice').addEventListener('click', saveRolePrice);
+
+    // Order status
+    $('#btnSaveOrderStatus').addEventListener('click', saveOrderStatus);
+
+    // Modal close
+    $$('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $(`#${btn.dataset.close}`).classList.remove('open');
+      });
+    });
+
+    $$('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+    });
+  }
+
+  // ========== AUTH ==========
+  async function doLogin() {
+    const username = $('#loginUsername').value.trim();
+    const password = $('#loginPassword').value;
+    const errEl = $('#loginError');
+
+    if (!username || !password) {
+      errEl.textContent = 'Username dan password wajib diisi';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const btn = $('#btnLogin');
+    btn.disabled = true;
+    btn.textContent = 'Login...';
+
+    const res = await api('/api/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Login';
+
+    if (!res.success) {
+      errEl.textContent = res.message || 'Login gagal';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    errEl.style.display = 'none';
+    showDashboard(res.data.username);
+  }
+
+  async function doLogout() {
+    await api('/api/admin/logout', { method: 'POST' });
+    showLogin();
+    $('#loginUsername').value = '';
+    $('#loginPassword').value = '';
+  }
+
+  // ========== PANELS ==========
+  function switchPanel(panel) {
+    currentPanel = panel;
+    $$('.admin-panel').forEach(p => p.classList.remove('active'));
+    $(`#panel-${panel}`).classList.add('active');
+
+    const titles = {
+      dashboard: 'Dashboard',
+      products: 'Products',
+      roles: 'Roles',
+      orders: 'Orders',
+      settings: 'Settings'
+    };
+    $('#panelTitle').textContent = titles[panel] || panel;
+
+    if (panel === 'dashboard') loadDashboard();
+    if (panel === 'products') loadProducts();
+    if (panel === 'roles') loadRoles();
+    if (panel === 'orders') loadOrders();
+  }
+
+  // ========== DASHBOARD ==========
+  async function loadDashboard() {
+    const res = await api('/api/admin/dashboard');
+    if (!res.success) return;
+
+    const d = res.data;
+    $('#statTotal').textContent = d.totalOrders;
+    $('#statPending').textContent = d.pendingOrders;
+    $('#statCompleted').textContent = d.completedOrders;
+    $('#statRevenue').textContent = formatPrice(d.totalRevenue);
+  }
+
+  // ========== PRODUCTS ==========
+  async function loadProducts() {
+    const res = await api('/api/admin/products');
+    const tbody = $('#productsTableBody');
+
+    if (!res.success) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Gagal memuat</td></tr>';
+      return;
+    }
+
+    // Exclude pure roles from products list (they have own panel)
+    const list = res.data.filter(p => p.type !== 'role');
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Belum ada produk</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map(p => `
+      <tr>
+        <td>${p.id}</td>
+        <td>${p.store}</td>
+        <td>${escapeHtml(p.name)}</td>
+        <td>${formatPrice(p.price)}</td>
+        <td>${p.stock === -1 ? '∞' : p.stock}</td>
+        <td><span class="badge ${p.active ? 'badge-completed' : 'badge-cancelled'}">${p.active ? 'ACTIVE' : 'OFF'}</span></td>
+        <td>
+          <button class="btn btn-secondary btn-sm btn-edit-prod" data-id="${p.id}">Edit</button>
+          <button class="btn btn-danger btn-sm btn-toggle-prod" data-id="${p.id}" data-active="${p.active}">
+            ${p.active ? 'Disable' : 'Enable'}
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.btn-edit-prod').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const prod = res.data.find(p => p.id === parseInt(btn.dataset.id, 10));
+        if (prod) openProductModal(prod);
+      });
+    });
+
+    tbody.querySelectorAll('.btn-toggle-prod').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const currentlyActive = btn.dataset.active === '1' || btn.dataset.active === 'true';
+        const res2 = await api(`/api/admin/products/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ active: !currentlyActive })
+        });
+        if (res2.success) {
+          showToast(currentlyActive ? 'Produk dinonaktifkan' : 'Produk diaktifkan');
+          loadProducts();
+        } else {
+          showToast(res2.message || 'Gagal', 'error');
+        }
+      });
+    });
+  }
+
+  function openProductModal(prod = null) {
+    if (prod) {
+      $('#productModalTitle').textContent = 'Edit Produk';
+      $('#editProductId').value = prod.id;
+      $('#prodStore').value = prod.store;
+      $('#prodName').value = prod.name;
+      $('#prodDesc').value = prod.description || '';
+      $('#prodPrice').value = prod.price;
+      $('#prodType').value = prod.type;
+      $('#prodRoleId').value = prod.role_id || '';
+      $('#prodStock').value = prod.stock;
+      $('#prodActive').value = prod.active ? '1' : '0';
+      $('#roleIdGroup').style.display = prod.type === 'role' ? 'block' : 'none';
+    } else {
+      $('#productModalTitle').textContent = 'Tambah Produk';
+      $('#editProductId').value = '';
+      $('#prodStore').value = 'RGT';
+      $('#prodName').value = '';
+      $('#prodDesc').value = '';
+      $('#prodPrice').value = '';
+      $('#prodType').value = 'currency';
+      $('#prodRoleId').value = '';
+      $('#prodStock').value = '-1';
+      $('#prodActive').value = '1';
+      $('#roleIdGroup').style.display = 'none';
+    }
+    $('#productModal').classList.add('open');
+  }
+
+  async function saveProduct() {
+    const id = $('#editProductId').value;
+    const data = {
+      store: $('#prodStore').value,
+      name: $('#prodName').value.trim(),
+      description: $('#prodDesc').value.trim(),
+      price: parseInt($('#prodPrice').value, 10),
+      type: $('#prodType').value,
+      role_id: $('#prodType').value === 'role' ? parseInt($('#prodRoleId').value, 10) || null : null,
+      stock: parseInt($('#prodStock').value, 10),
+      active: $('#prodActive').value === '1'
+    };
+
+    if (!data.name || isNaN(data.price) || data.price < 0) {
+      showToast('Nama dan harga wajib diisi', 'error');
+      return;
+    }
+
+    let res;
+    if (id) {
+      res = await api(`/api/admin/products/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      });
+    } else {
+      res = await api('/api/admin/products', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+    }
+
+    if (res.success) {
+      showToast(id ? 'Produk diupdate' : 'Produk ditambahkan');
+      $('#productModal').classList.remove('open');
+      loadProducts();
+    } else {
+      showToast(res.message || 'Gagal menyimpan', 'error');
+    }
+  }
+
+  // ========== ROLES ==========
+  async function loadRoles() {
+    const res = await api('/api/admin/products');
+    const tbody = $('#rolesTableBody');
+
+    if (!res.success) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Gagal memuat</td></tr>';
+      return;
+    }
+
+    const roles = res.data
+      .filter(p => p.type === 'role')
+      .sort((a, b) => (a.role_id || 0) - (b.role_id || 0));
+
+    if (roles.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Belum ada role</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = roles.map(r => `
+      <tr>
+        <td>#${r.role_id}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${formatPrice(r.price)}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm btn-edit-role" data-id="${r.id}">Ubah Harga</button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.btn-edit-role').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const role = roles.find(r => r.id === parseInt(btn.dataset.id, 10));
+        if (role) {
+          $('#editRoleId').value = role.id;
+          $('#editRoleName').value = `#${role.role_id} ${role.name}`;
+          $('#editRolePrice').value = role.price;
+          $('#rolePriceModal').classList.add('open');
+        }
+      });
+    });
+  }
+
+  async function saveRolePrice() {
+    const id = parseInt($('#editRoleId').value, 10);
+    const price = parseInt($('#editRolePrice').value, 10);
+
+    if (isNaN(price) || price < 0) {
+      showToast('Harga tidak valid', 'error');
+      return;
+    }
+
+    const res = await api(`/api/admin/products/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ price })
+    });
+
+    if (res.success) {
+      showToast('Harga role berhasil diubah');
+      $('#rolePriceModal').classList.remove('open');
+      loadRoles();
+    } else {
+      showToast(res.message || 'Gagal', 'error');
+    }
+  }
+
+  // ========== ORDERS ==========
+  async function loadOrders() {
+    const res = await api('/api/admin/orders');
+    const tbody = $('#ordersTableBody');
+
+    if (!res.success) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Gagal memuat</td></tr>';
+      return;
+    }
+
+    if (res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Belum ada order</td></tr>';
+      return;
+    }
+
+    const statusClass = {
+      PENDING: 'badge-pending',
+      PAID: 'badge-paid',
+      PROCESSING: 'badge-processing',
+      COMPLETED: 'badge-completed',
+      CANCELLED: 'badge-cancelled'
+    };
+
+    tbody.innerHTML = res.data.map(o => `
+      <tr>
+        <td><strong>${o.invoice}</strong></td>
+        <td>${escapeHtml(o.player_id)}</td>
+        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.products || '-')}</td>
+        <td>${formatPrice(o.total)}</td>
+        <td>${o.payment_method}</td>
+        <td><span class="badge ${statusClass[o.status] || ''}">${o.status}</span></td>
+        <td>${formatDate(o.created_at)}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm btn-edit-order" data-invoice="${o.invoice}" data-status="${o.status}">Status</button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.btn-edit-order').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $('#editOrderInvoice').value = btn.dataset.invoice;
+        $('#editOrderInvoiceDisplay').value = btn.dataset.invoice;
+        $('#editOrderStatus').value = btn.dataset.status;
+        $('#orderStatusModal').classList.add('open');
+      });
+    });
+  }
+
+  async function saveOrderStatus() {
+    const invoice = $('#editOrderInvoice').value;
+    const status = $('#editOrderStatus').value;
+
+    const res = await api(`/api/admin/orders/${invoice}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
+    });
+
+    if (res.success) {
+      showToast('Status berhasil diubah');
+      $('#orderStatusModal').classList.remove('open');
+      loadOrders();
+      if (currentPanel === 'dashboard') loadDashboard();
+    } else {
+      showToast(res.message || 'Gagal', 'error');
+    }
+  }
+
+  // ========== UTILS ==========
+  function formatPrice(n) {
+    return 'Rp' + Number(n).toLocaleString('id-ID');
+  }
+
+  function formatDate(str) {
+    if (!str) return '-';
+    try {
+      const d = new Date(str + (str.includes('Z') ? '' : 'Z'));
+      return d.toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch {
+      return str;
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  function showToast(msg, type = 'success') {
+    const toast = $('#toast');
+    toast.textContent = msg;
+    toast.className = 'toast show ' + type;
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  // Start
+  init();
+})();
+/* PNWL.STORE - Frontend */
+(function () {
+  'use strict';
+
+  // State
+  let products = [];
+  let cart = JSON.parse(localStorage.getItem('gt_cart') || '[]');
+  let selectedRole = null;
+  let lastInvoice = null;
+
+  // DOM
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  // ========== INIT ==========
+  async function init() {
+    setupNavigation();
+    setupCart();
+    setupModals();
+    setupSearch();
+    setupStoreCards();
+    await loadProducts();
+    renderCart();
+    updateCartCount();
+  }
+
+  // ========== API ==========
+  async function api(url, options = {}) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: 'Koneksi gagal' };
+    }
+  }
+
+  async function loadProducts() {
+    const res = await api('/api/products');
+    if (res.success) {
+      products = res.data;
+      renderHomeProducts();
+      renderStoreProducts('RGT', 'rgtProducts');
+      renderStoreProducts('GTPS', 'gtpsProducts');
+    } else {
+      $('#homeProducts').innerHTML = '<div class="loading">Gagal memuat produk</div>';
+    }
+  }
+
+  // ========== NAVIGATION ==========
+  function setupNavigation() {
+    $$('.nav-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const page = link.dataset.page;
+        showPage(page);
+        $$('.nav-link').forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        $('#mainNav').classList.remove('open');
+      });
+    });
+
+    $('#menuToggle').addEventListener('click', () => {
+      $('#mainNav').classList.toggle('open');
+    });
+
+    $('#btnBeliSekarang').addEventListener('click', () => {
+      showPage('rgt');
+      $$('.nav-link').forEach(l => l.classList.remove('active'));
+      $$('.nav-link[data-page="rgt"]').forEach(l => l.classList.add('active'));
+    });
+  }
+
+  function showPage(page) {
+    ['home', 'rgt', 'gtps', 'status'].forEach(p => {
+      const el = $(`#page-${p}`);
+      if (el) el.style.display = p === page ? 'block' : 'none';
+    });
+    window.scrollTo(0, 0);
+  }
+
+  // ========== STORE CARDS ==========
+  function setupStoreCards() {
+    $$('.store-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const store = card.dataset.store;
+        if (store === 'RGT') {
+          showPage('rgt');
+          $$('.nav-link').forEach(l => l.classList.remove('active'));
+          $$('.nav-link[data-page="rgt"]').forEach(l => l.classList.add('active'));
+        } else {
+          showPage('gtps');
+          $$('.nav-link').forEach(l => l.classList.remove('active'));
+          $$('.nav-link[data-page="gtps"]').forEach(l => l.classList.add('active'));
+        }
+      });
+    });
+  }
+
+  // ========== RENDER PRODUCTS ==========
+  function formatPrice(n) {
+    return 'Rp' + Number(n).toLocaleString('id-ID');
+  }
+
+  function getProductIcon(p) {
+    if (p.type === 'role') return '👑';
+    if (p.name.toLowerCase().includes('diamond')) return '💎';
+    if (p.name.toLowerCase().includes('blue') || p.name === 'BGL') return '🔵';
+    if (p.name === 'BBGL') return '🖤';
+    if (p.type === 'custom_item') return '🎁';
+    return '⭐';
+  }
+
+  function createProductCard(p) {
+    const soldOut = p.stock === 0;
+    const stockText = p.stock === -1
+      ? 'Unlimited'
+      : p.stock === 0
+        ? ''
+        : `Stok: ${p.stock}`;
+
+    return `
+      <div class="product-card" data-id="${p.id}">
+        <div class="product-icon">${getProductIcon(p)}</div>
+        <h4>${escapeHtml(p.name)}</h4>
+        <div class="desc">${escapeHtml(p.description || '')}</div>
+        <div class="price">${formatPrice(p.price)}</div>
+        ${soldOut
+          ? '<div class="sold-out">SOLD OUT</div>'
+          : `<div class="stock ${p.stock > 0 && p.stock <= 5 ? 'low' : ''}">${stockText}</div>
+             <button class="btn btn-primary btn-sm btn-buy" data-id="${p.id}" style="margin-top:6px;width:100%;">
+               ${p.type === 'role' ? 'PILIH ROLE' : 'BELI'}
+             </button>`
+        }
+      </div>
+    `;
+  }
+
+  function renderHomeProducts(filter = '') {
+    const container = $('#homeProducts');
+    let list = products;
+
+    if (filter) {
+      const q = filter.toLowerCase();
+      list = products.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        p.store.toLowerCase().includes(q)
+      );
+    }
+
+    if (list.length === 0) {
+      container.innerHTML = '<div class="loading">Tidak ada produk ditemukan</div>';
+      return;
+    }
+
+    // Group by store
+    const rgt = list.filter(p => p.store === 'RGT');
+    const gtps = list.filter(p => p.store === 'GTPS' && p.type !== 'role');
+    const roles = list.filter(p => p.type === 'role');
+
+    let html = '';
+    if (rgt.length) {
+      html += `<h2 class="section-title">RGT Store</h2><div class="product-grid">${rgt.map(createProductCard).join('')}</div>`;
+    }
+    if (gtps.length) {
+      html += `<h2 class="section-title">GTPS Store</h2><div class="product-grid">${gtps.map(createProductCard).join('')}</div>`;
+    }
+    if (roles.length) {
+      html += `<h2 class="section-title">Roles</h2><div class="product-grid">${roles.map(createProductCard).join('')}</div>`;
+    }
+
+    container.innerHTML = html || '<div class="loading">Tidak ada produk</div>';
+    bindBuyButtons(container);
+  }
+
+  function renderStoreProducts(store, containerId, filter = '') {
+    const container = $(`#${containerId}`);
+    let list = products.filter(p => p.store === store);
+
+    if (filter) {
+      const q = filter.toLowerCase();
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Separate roles for GTPS
+    if (store === 'GTPS') {
+      const items = list.filter(p => p.type !== 'role');
+      const roles = list.filter(p => p.type === 'role');
+
+      let html = '';
+      if (items.length) {
+        html += `<div class="product-grid">${items.map(createProductCard).join('')}</div>`;
+      }
+      if (roles.length) {
+        html += `<h2 class="section-title" style="margin-top:24px;">Roles</h2>
+                 <div class="product-grid">${roles.map(createProductCard).join('')}</div>`;
+      }
+      container.innerHTML = html || '<div class="loading">Tidak ada produk</div>';
+    } else {
+      container.innerHTML = list.length
+        ? `<div class="product-grid">${list.map(createProductCard).join('')}</div>`
+        : '<div class="loading">Tidak ada produk</div>';
+    }
+
+    bindBuyButtons(container);
+  }
+
+  function bindBuyButtons(container) {
+    container.querySelectorAll('.btn-buy').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const product = products.find(p => p.id === id);
+        if (!product) return;
+
+        if (product.type === 'role') {
+          openRoleModal();
+        } else {
+          addToCart(product, 1);
+        }
+      });
+    });
+  }
+
+  // ========== ROLE MODAL ==========
+  function openRoleModal() {
+    selectedRole = null;
+    const roles = products
+      .filter(p => p.type === 'role' && p.active)
+      .sort((a, b) => (b.role_id || 0) - (a.role_id || 0));
+
+    const list = $('#roleList');
+    list.innerHTML = roles.map(r => `
+      <div class="role-item" data-id="${r.id}">
+        <span class="role-name">#${r.role_id} ${escapeHtml(r.name)}</span>
+        <span class="role-price">${formatPrice(r.price)}</span>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.role-item').forEach(item => {
+      item.addEventListener('click', () => {
+        list.querySelectorAll('.role-item').forEach(i => i.classList.remove('selected'));
+        item.classList.add('selected');
+        selectedRole = products.find(p => p.id === parseInt(item.dataset.id, 10));
+        $('#btnAddRole').disabled = false;
+      });
+    });
+
+    $('#btnAddRole').disabled = true;
+    openModal('roleModal');
+  }
+
+  $('#btnAddRole').addEventListener('click', () => {
+    if (selectedRole) {
+      addToCart(selectedRole, 1);
+      closeModal('roleModal');
+    }
+  });
+
+  // ========== CART ==========
+  function setupCart() {
+    $('#cartBtn').addEventListener('click', () => {
+      $('#cartOverlay').classList.add('open');
+    });
+    $('#cartClose').addEventListener('click', () => {
+      $('#cartOverlay').classList.remove('open');
+    });
+    $('#cartOverlay').addEventListener('click', (e) => {
+      if (e.target === $('#cartOverlay')) {
+        $('#cartOverlay').classList.remove('open');
+      }
+    });
+    $('#btnCheckout').addEventListener('click', openCheckout);
+  }
+
+  function saveCart() {
+    localStorage.setItem('gt_cart', JSON.stringify(cart));
+  }
+
+  function addToCart(product, qty) {
+    if (product.stock === 0) {
+      showToast('Produk sudah SOLD OUT', 'error');
+      return;
+    }
+
+    const existing = cart.find(c => c.product_id === product.id);
+    if (existing) {
+      const newQty = existing.quantity + qty;
+      if (product.stock > 0 && newQty > product.stock) {
+        showToast(`Stok hanya ${product.stock}`, 'error');
+        return;
+      }
+      existing.quantity = newQty;
+    } else {
+      cart.push({
+        product_id: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: qty,
+        type: product.type,
+        role_id: product.role_id
+      });
+    }
+
+    saveCart();
+    renderCart();
+    updateCartCount();
+    showToast(`${product.name} ditambahkan ke cart`);
+  }
+
+  function updateCartQty(productId, delta) {
+    const item = cart.find(c => c.product_id === productId);
+    if (!item) return;
+
+    const product = products.find(p => p.id === productId);
+    const newQty = item.quantity + delta;
+
+    if (newQty <= 0) {
+      cart = cart.filter(c => c.product_id !== productId);
+    } else {
+      if (product && product.stock > 0 && newQty > product.stock) {
+        showToast(`Stok hanya ${product.stock}`, 'error');
+        return;
+      }
+      item.quantity = newQty;
+    }
+
+    saveCart();
+    renderCart();
+    updateCartCount();
+  }
+
+  function removeFromCart(productId) {
+    cart = cart.filter(c => c.product_id !== productId);
+    saveCart();
+    renderCart();
+    updateCartCount();
+  }
+
+  function renderCart() {
+    const body = $('#cartBody');
+    if (cart.length === 0) {
+      body.innerHTML = '<div class="cart-empty">Keranjang masih kosong</div>';
+      $('#cartTotal').textContent = 'Rp0';
+      $('#btnCheckout').disabled = true;
+      return;
+    }
+
+    let total = 0;
+    body.innerHTML = cart.map(item => {
+      const sub = item.price * item.quantity;
+      total += sub;
+      return `
+        <div class="cart-item">
+          <div class="cart-item-info">
+            <h5>${escapeHtml(item.name)}</h5>
+            <div class="price">${formatPrice(item.price)} × ${item.quantity}</div>
+          </div>
+          <div class="cart-qty">
+            <button data-action="minus" data-id="${item.product_id}">−</button>
+            <span>${item.quantity}</span>
+            <button data-action="plus" data-id="${item.product_id}">+</button>
+          </div>
+          <button class="cart-remove" data-id="${item.product_id}">🗑</button>
+        </div>
+      `;
+    }).join('');
+
+    body.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const delta = btn.dataset.action === 'plus' ? 1 : -1;
+        updateCartQty(id, delta);
+      });
+    });
+
+    body.querySelectorAll('.cart-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        removeFromCart(parseInt(btn.dataset.id, 10));
+      });
+    });
+
+    $('#cartTotal').textContent = formatPrice(total);
+    $('#btnCheckout').disabled = false;
+  }
+
+  function updateCartCount() {
+    const count = cart.reduce((s, i) => s + i.quantity, 0);
+    $('#cartCount').textContent = count;
+  }
+
+  // ========== CHECKOUT ==========
+  function openCheckout() {
+    if (cart.length === 0) return;
+
+    let total = 0;
+    const summary = cart.map(item => {
+      const sub = item.price * item.quantity;
+      total += sub;
+      return `<div class="row"><span class="label">${escapeHtml(item.name)} ×${item.quantity}</span><span class="value">${formatPrice(sub)}</span></div>`;
+    }).join('');
+
+    $('#checkoutSummary').innerHTML = summary +
+      `<div class="row" style="margin-top:8px;font-weight:700;"><span class="label">Total</span><span class="value" style="color:var(--accent)">${formatPrice(total)}</span></div>`;
+
+    $('#playerId').value = '';
+    $('#whatsapp').value = '';
+    $('#paymentMethod').value = 'QRIS';
+
+    $('#cartOverlay').classList.remove('open');
+    openModal('checkoutModal');
+  }
+
+  $('#btnConfirmOrder').addEventListener('click', async () => {
+    const playerId = $('#playerId').value.trim();
+    const whatsapp = $('#whatsapp').value.trim();
+    const paymentMethod = $('#paymentMethod').value;
+
+    if (!playerId || playerId.length < 2) {
+      showToast('GrowID / Player ID wajib diisi', 'error');
+      return;
+    }
+
+    const btn = $('#btnConfirmOrder');
+    btn.disabled = true;
+    btn.textContent = 'Memproses...';
+
+    const payload = {
+      player_id: playerId,
+      whatsapp,
+      payment_method: paymentMethod,
+      items: cart.map(c => ({
+        product_id: c.product_id,
+        quantity: c.quantity
+      }))
+    };
+
+    const res = await api('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Buat Order';
+
+    if (!res.success) {
+      showToast(res.message || 'Gagal membuat order', 'error');
+      return;
+    }
+
+    // Clear cart
+    cart = [];
+    saveCart();
+    renderCart();
+    updateCartCount();
+
+    lastInvoice = res.data.invoice;
+    showSuccess(res.data);
+    closeModal('checkoutModal');
+  });
+
+  // ========== PEMBAYARAN ==========
+  function paymentHtml(p) {
+    if (!p) return '';
+
+    const rows = (p.lines || []).map(l => `
+      <div class="row">
+        <span class="label">${escapeHtml(l.label)}</span>
+        <span class="value">
+          ${escapeHtml(l.value)}
+          ${l.copy ? `<button type="button" class="pay-copy-btn" data-copy="${escapeHtml(l.value)}">Salin</button>` : ''}
+        </span>
+      </div>`).join('');
+
+    const qris = p.image
+      ? `<img class="pay-qris" src="${escapeHtml(p.image)}" alt="QRIS pembayaran">`
+      : '';
+
+    const warn = p.configured
+      ? ''
+      : '<p class="pay-warn">Detail pembayaran belum diatur oleh toko. Silakan hubungi admin lewat WhatsApp.</p>';
+
+    const wa = p.wa_link
+      ? `<a class="btn btn-primary pay-wa" href="${escapeHtml(p.wa_link)}" target="_blank" rel="noopener">Kirim Bukti Bayar via WhatsApp</a>`
+      : '';
+
+    return `
+      <div class="pay-box">
+        <h4>Cara Pembayaran &middot; ${escapeHtml(p.method)}</h4>
+        ${qris}
+        <div class="invoice-detail pay-detail">
+          ${rows}
+          <div class="row"><span class="label">Total Bayar</span><span class="value" style="color:var(--accent)">${formatPrice(p.total)}</span></div>
+        </div>
+        ${warn}
+        <ol class="pay-steps">
+          <li>Bayar sesuai total di atas.</li>
+          <li>Simpan bukti pembayaran (screenshot).</li>
+          <li>Kirim bukti beserta nomor invoice <strong>${escapeHtml(p.invoice)}</strong> ke admin.</li>
+          <li>Order diproses setelah pembayaran dikonfirmasi admin.</li>
+        </ol>
+        ${wa}
+      </div>`;
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pay-copy-btn');
+    if (!btn) return;
+    const text = btn.dataset.copy || '';
+    const done = () => {
+      btn.textContent = 'Tersalin';
+      setTimeout(() => { btn.textContent = 'Salin'; }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => showToast('Gagal menyalin', 'error'));
+    } else {
+      showToast('Salin manual: ' + text);
+    }
+  });
+
+  function showSuccess(data) {
+    const itemsHtml = data.items.map(i =>
+      `<div class="row"><span class="label">${escapeHtml(i.name)} ×${i.quantity}</span><span class="value">${formatPrice(i.subtotal)}</span></div>`
+    ).join('');
+
+    $('#successContent').innerHTML = `
+      <div class="success-icon">✅</div>
+      <h3>ORDER BERHASIL</h3>
+      <div class="invoice-detail">
+        <div class="row"><span class="label">Invoice</span><span class="value">${data.invoice}</span></div>
+        <div class="row"><span class="label">Player ID</span><span class="value">${escapeHtml(data.player_id)}</span></div>
+        ${itemsHtml}
+        <div class="row"><span class="label">Total</span><span class="value" style="color:var(--accent)">${formatPrice(data.total)}</span></div>
+        <div class="row"><span class="label">Status</span><span class="value"><span class="badge badge-pending">PENDING</span></span></div>
+      </div>
+      ${paymentHtml(data.payment)}
+      <p style="color:var(--text-muted);font-size:0.85rem;">Simpan nomor invoice untuk cek status order.</p>
+    `;
+
+    openModal('successModal');
+  }
+
+  $('#btnLihatStatus').addEventListener('click', () => {
+    closeModal('successModal');
+    showPage('status');
+    $$('.nav-link').forEach(l => l.classList.remove('active'));
+    $$('.nav-link[data-page="status"]').forEach(l => l.classList.add('active'));
+    if (lastInvoice) {
+      $('#invoiceInput').value = lastInvoice;
+      checkStatus();
+    }
+  });
+
+  $('#btnKembaliStore').addEventListener('click', () => {
+    closeModal('successModal');
+    showPage('home');
+    $$('.nav-link').forEach(l => l.classList.remove('active'));
+    $$('.nav-link[data-page="home"]').forEach(l => l.classList.add('active'));
+  });
+
+  // ========== ORDER STATUS ==========
+  $('#btnCekStatus').addEventListener('click', checkStatus);
+  $('#invoiceInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') checkStatus();
+  });
+
+  async function checkStatus() {
+    const invoice = $('#invoiceInput').value.trim().toUpperCase();
+    if (!invoice) {
+      showToast('Masukkan nomor invoice', 'error');
+      return;
+    }
+
+    const res = await api(`/api/orders/${invoice}`);
+    const result = $('#statusResult');
+
+    if (!res.success) {
+      result.classList.add('show');
+      result.innerHTML = `<p style="color:var(--danger);text-align:center;">${res.message || 'Invoice tidak ditemukan'}</p>`;
+      return;
+    }
+
+    const o = res.data;
+    const statusClass = {
+      PENDING: 'badge-pending',
+      PAID: 'badge-paid',
+      PROCESSING: 'badge-processing',
+      COMPLETED: 'badge-completed',
+      CANCELLED: 'badge-cancelled'
+    }[o.status] || 'badge-pending';
+
+    const itemsHtml = (o.items || []).map(i =>
+      `<div class="row"><span class="label">${escapeHtml(i.product_name)} ×${i.quantity}</span><span class="value">${formatPrice(i.price * i.quantity)}</span></div>`
+    ).join('');
+
+    result.classList.add('show');
+    result.innerHTML = `
+      <div class="invoice-detail">
+        <div class="row"><span class="label">Invoice</span><span class="value">${o.invoice}</span></div>
+        <div class="row"><span class="label">Player ID</span><span class="value">${escapeHtml(o.player_id)}</span></div>
+        <div class="row"><span class="label">WhatsApp</span><span class="value">${escapeHtml(o.whatsapp || '-')}</span></div>
+        <div class="row"><span class="label">Pembayaran</span><span class="value">${o.payment_method}</span></div>
+        ${itemsHtml}
+        <div class="row"><span class="label">Total</span><span class="value" style="color:var(--accent)">${formatPrice(o.total)}</span></div>
+        <div class="row"><span class="label">Status</span><span class="value"><span class="badge ${statusClass}">${o.status}</span></span></div>
+        <div class="row"><span class="label">Tanggal</span><span class="value">${formatDate(o.created_at)}</span></div>
+      </div>
+      ${paymentHtml(o.payment)}
+    `;
+  }
+
+  // ========== SEARCH ==========
+  function setupSearch() {
+    $('#searchInput').addEventListener('input', (e) => {
+      renderHomeProducts(e.target.value.trim());
+    });
+    $('#searchRgt').addEventListener('input', (e) => {
+      renderStoreProducts('RGT', 'rgtProducts', e.target.value.trim());
+    });
+    $('#searchGtps').addEventListener('input', (e) => {
+      renderStoreProducts('GTPS', 'gtpsProducts', e.target.value.trim());
+    });
+  }
+
+  // ========== MODALS ==========
+  function setupModals() {
+    $$('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        closeModal(btn.dataset.close);
+      });
+    });
+
+    $$('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          overlay.classList.remove('open');
+        }
+      });
+    });
+  }
+
+  function openModal(id) {
+    $(`#${id}`).classList.add('open');
+  }
+
+  function closeModal(id) {
+    $(`#${id}`).classList.remove('open');
+  }
+
+  // ========== UTILS ==========
+  function showToast(msg, type = 'success') {
+    const toast = $('#toast');
+    toast.textContent = msg;
+    toast.className = 'toast show ' + type;
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  function formatDate(str) {
+    if (!str) return '-';
+    try {
+      const d = new Date(str + (str.includes('Z') ? '' : 'Z'));
+      return d.toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch {
+      return str;
+    }
+  }
+
+  // Start
+  init();
+})();
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PNWL.STORE - Growtopia Top Up & Service</title>
+  <meta name="description" content="Top Up Growtopia cepat, aman, dan terpercaya. PNWL.STORE - RGT Store & GTPS Store.">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <div class="logo-icon">PN</div>
+        <span>PNWL.STORE</span>
+      </a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Menu">☰</button>
+      <nav class="nav" id="mainNav">
+        <a href="#" class="nav-link active" data-page="home">Home</a>
+        <a href="#" class="nav-link" data-page="rgt">RGT Store</a>
+        <a href="#" class="nav-link" data-page="gtps">GTPS Store</a>
+        <a href="#" class="nav-link" data-page="status">Order Status</a>
+      </nav>
+      <button class="cart-btn" id="cartBtn">
+        🛒 Cart
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- HOME PAGE -->
+    <section id="page-home">
+      <div class="hero">
+        <h1>TOP UP & SERVICE GROWTOPIA</h1>
+        <p>Fast, Simple & Trusted</p>
+        <button class="btn btn-primary" id="btnBeliSekarang">BELI SEKARANG</button>
+      </div>
+
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Cari produk... (Diamond Lock, BGL, God, VIP...)">
+      </div>
+
+      <div class="store-selector">
+        <div class="store-card" data-store="RGT">
+          <h3>RGT STORE</h3>
+          <p>Diamond Lock • Blue Gem Lock</p>
+        </div>
+        <div class="store-card" data-store="GTPS">
+          <h3>GTPS STORE</h3>
+          <p>BGL • BBGL • Custom Item • Role</p>
+        </div>
+      </div>
+
+      <div id="homeProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- RGT STORE PAGE -->
+    <section id="page-rgt" style="display:none;">
+      <div class="hero" style="padding-bottom:20px;">
+        <h1>RGT STORE</h1>
+        <p>Diamond Lock & Blue Gem Lock</p>
+      </div>
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchRgt" placeholder="Cari di RGT Store...">
+      </div>
+      <div id="rgtProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- GTPS STORE PAGE -->
+    <section id="page-gtps" style="display:none;">
+      <div class="hero" style="padding-bottom:20px;">
+        <h1>GTPS STORE</h1>
+        <p>BGL • BBGL • Custom Item • Role</p>
+      </div>
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchGtps" placeholder="Cari di GTPS Store...">
+      </div>
+      <div id="gtpsProducts">
+        <div class="loading">Memuat produk...</div>
+      </div>
+    </section>
+
+    <!-- ORDER STATUS PAGE -->
+    <section id="page-status" style="display:none;">
+      <div class="status-section">
+        <h2 class="section-title">Cek Status Order</h2>
+        <div class="form-group">
+          <label>Nomor Invoice</label>
+          <input type="text" id="invoiceInput" placeholder="PNWL-XXXXXXXX">
+        </div>
+        <button class="btn btn-primary" id="btnCekStatus" style="width:100%;">CEK STATUS</button>
+
+        <div class="status-result" id="statusResult">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2025 PNWL.STORE. All rights reserved.</p>
+    <p style="margin-top:4px;">Growtopia Top Up & Service</p>
+  </footer>
+
+  <!-- Cart Overlay -->
+  <div class="cart-overlay" id="cartOverlay">
+    <div class="cart-drawer">
+      <div class="cart-header">
+        <h3>🛒 Keranjang</h3>
+        <button class="cart-close" id="cartClose">&times;</button>
+      </div>
+      <div class="cart-body" id="cartBody">
+        <div class="cart-empty">Keranjang masih kosong</div>
+      </div>
+      <div class="cart-footer">
+        <div class="cart-total">
+          <span>Total</span>
+          <span id="cartTotal">Rp0</span>
+        </div>
+        <button class="btn btn-primary" id="btnCheckout" style="width:100%;" disabled>CHECKOUT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Role Modal -->
+  <div class="modal-overlay" id="roleModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>SELECT ROLE</h3>
+        <button class="modal-close" data-close="roleModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="role-list" id="roleList">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="roleModal">Batal</button>
+        <button class="btn btn-primary" id="btnAddRole" disabled>Tambah ke Cart</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Modal -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Checkout</h3>
+        <button class="modal-close" data-close="checkoutModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>GrowID / Player ID *</label>
+          <input type="text" id="playerId" placeholder="Masukkan GrowID kamu" required>
+        </div>
+        <div class="form-group">
+          <label>Nomor WhatsApp (opsional)</label>
+          <input type="text" id="whatsapp" placeholder="08xxxxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label>Metode Pembayaran *</label>
+          <select id="paymentMethod">
+            <option value="QRIS">QRIS</option>
+            <option value="DANA">DANA</option>
+            <option value="OVO">OVO</option>
+            <option value="GoPay">GoPay</option>
+            <option value="Transfer Bank">Transfer Bank</option>
+          </select>
+        </div>
+        <div class="invoice-detail" id="checkoutSummary">
+          <!-- Summary -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="checkoutModal">Batal</button>
+        <button class="btn btn-primary" id="btnConfirmOrder">Buat Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div class="modal-overlay" id="successModal">
+    <div class="modal">
+      <div class="modal-body">
+        <div class="invoice-box" id="successContent">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:center; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btnLihatStatus">Lihat Status Order</button>
+        <button class="btn btn-secondary" data-close="successModal" id="btnKembaliStore">Kembali ke Store</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>/* PNWL.STORE - Dark Neon Theme */
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1a1a24;
+  --bg-card-hover: #22222e;
+  --border: #2a2a3a;
+  --border-neon: #00f0ff;
+  --accent: #00f0ff;
+  --accent-2: #ff00aa;
+  --accent-3: #7b2cbf;
+  --text-primary: #f0f0f5;
+  --text-secondary: #a0a0b0;
+  --text-muted: #6a6a7a;
+  --success: #00e676;
+  --warning: #ffab00;
+  --danger: #ff1744;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 20px rgba(0, 240, 255, 0.08);
+  --glow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Background effect */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(0, 240, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(255, 0, 170, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Layout */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header */
+.header {
+  background: rgba(18, 18, 26, 0.95);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  gap: 12px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.5px;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #fff;
+  box-shadow: var(--glow);
+}
+
+.logo span {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Nav */
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: var(--accent);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.cart-btn {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.cart-btn:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.cart-count {
+  background: var(--accent-2);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Mobile menu */
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Hero */
+.hero {
+  text-align: center;
+  padding: 48px 0 36px;
+}
+
+.hero h1 {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--accent), #fff, var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 1px;
+}
+
+.hero p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-bottom: 24px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #00c4d4);
+  color: #0a0a0f;
+  box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 240, 255, 0.4);
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-danger {
+  background: rgba(255, 23, 68, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(255, 23, 68, 0.3);
+}
+
+.btn-danger:hover {
+  background: rgba(255, 23, 68, 0.25);
+}
+
+.btn-sm {
+  padding: 8px 14px;
+  font-size: 0.8rem;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Search */
+.search-bar {
+  margin: 0 auto 28px;
+  max-width: 420px;
+  position: relative;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 12px 16px 12px 42px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-bar input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.1);
+}
+
+.search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+/* Store Selector */
+.store-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.store-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+
+.store-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.store-card:hover,
+.store-card.active {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+  transform: translateY(-3px);
+}
+
+.store-card:hover::before,
+.store-card.active::before {
+  opacity: 1;
+}
+
+.store-card h3 {
+  font-size: 1.15rem;
+  margin-bottom: 6px;
+  color: var(--accent);
+}
+
+.store-card p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Section */
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius: 2px;
+}
+
+/* Product Grid */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 40px;
+}
+
+.product-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 14px;
+  text-align: center;
+  transition: all 0.25s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.product-card:hover {
+  border-color: rgba(0, 240, 255, 0.4);
+  box-shadow: var(--shadow);
+  transform: translateY(-3px);
+  background: var(--bg-card-hover);
+}
+
+.product-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(255, 0, 170, 0.15));
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+.product-card h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.product-card .desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-grow: 1;
+}
+
+.product-card .price {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.product-card .stock {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.product-card .stock.low {
+  color: var(--warning);
+}
+
+.product-card .sold-out {
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* Cart Drawer */
+.cart-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s;
+}
+
+.cart-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cart-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  max-width: 380px;
+  height: 100%;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  z-index: 210;
+  transform: translateX(100%);
+  transition: transform 0.3s;
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-overlay.open .cart-drawer {
+  transform: translateX(0);
+}
+
+.cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cart-header h3 {
+  font-size: 1.1rem;
+}
+
+.cart-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.cart-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.cart-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 0;
+}
+
+.cart-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cart-item-info {
+  flex: 1;
+}
+
+.cart-item-info h5 {
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+}
+
+.cart-item-info .price {
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.cart-qty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cart-qty button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cart-qty button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cart-qty span {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.cart-remove {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 4px;
+}
+
+.cart-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.cart-total {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.cart-total span:last-child {
+  color: var(--accent);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.25s;
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: scale(0.95);
+  transition: transform 0.25s;
+}
+
+.modal-overlay.open .modal {
+  transform: scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  font-size: 1.1rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Form */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.1);
+}
+
+.form-group select {
+  cursor: pointer;
+}
+
+/* Role list */
+.role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.role-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.role-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+}
+
+.role-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.2);
+}
+
+.role-item .role-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.role-item .role-price {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+/* Success / Invoice */
+.invoice-box {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.invoice-box .success-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.invoice-box h3 {
+  color: var(--success);
+  margin-bottom: 20px;
+}
+
+.invoice-detail {
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.invoice-detail .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice-detail .row:last-child {
+  border-bottom: none;
+}
+
+.invoice-detail .label {
+  color: var(--text-secondary);
+}
+
+.invoice-detail .value {
+  font-weight: 600;
+}
+
+/* Status badge */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-pending { background: rgba(255, 171, 0, 0.15); color: var(--warning); }
+.badge-paid { background: rgba(0, 240, 255, 0.15); color: var(--accent); }
+.badge-processing { background: rgba(123, 44, 191, 0.2); color: #c77dff; }
+.badge-completed { background: rgba(0, 230, 118, 0.15); color: var(--success); }
+.badge-cancelled { background: rgba(255, 23, 68, 0.15); color: var(--danger); }
+
+/* Order Status Page */
+.status-section {
+  max-width: 480px;
+  margin: 40px auto;
+}
+
+.status-result {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-top: 20px;
+  display: none;
+}
+
+.status-result.show {
+  display: block;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  z-index: 500;
+  transition: transform 0.3s;
+  box-shadow: var(--shadow);
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.success {
+  border-color: var(--success);
+}
+
+.toast.error {
+  border-color: var(--danger);
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+}
+
+/* ========== ADMIN STYLES ========== */
+.admin-body {
+  background: var(--bg-primary);
+}
+
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.admin-sidebar {
+  width: 240px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  transition: transform 0.3s;
+}
+
+.admin-sidebar .logo {
+  padding: 0 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.admin-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.admin-nav a:hover,
+.admin-nav a.active {
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--accent);
+}
+
+.admin-main {
+  flex: 1;
+  margin-left: 240px;
+  padding: 24px;
+  min-height: 100vh;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.admin-header h1 {
+  font-size: 1.4rem;
+}
+
+.admin-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Stats */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.stat-card .label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.stat-card .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Admin table */
+.admin-table-wrap {
+  overflow-x: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.admin-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table tr:hover td {
+  background: rgba(0, 240, 255, 0.03);
+}
+
+/* Admin login */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.login-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 36px 28px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-box h2 {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 1.3rem;
+}
+
+.login-box .subtitle {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 28px;
+}
+
+/* Admin mobile toggle */
+.admin-menu-toggle {
+  display: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* Section panels */
+.admin-panel {
+  display: none;
+}
+
+.admin-panel.active {
+  display: block;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: block;
+  }
+
+  .nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-direction: column;
+    padding: 12px;
+    gap: 4px;
+  }
+
+  .nav.open {
+    display: flex;
+  }
+
+  .nav-link {
+    padding: 12px 16px;
+  }
+
+  .hero h1 {
+    font-size: 1.4rem;
+  }
+
+  .store-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  /* Admin responsive */
+  .admin-sidebar {
+    transform: translateX(-100%);
+  }
+
+  .admin-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .admin-main {
+    margin-left: 0;
+    padding: 16px;
+  }
+
+  .admin-menu-toggle {
+    display: block;
+  }
+
+  .admin-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 10px 10px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .product-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 32px 0 24px;
+  }
+}
+
+/* ===== Info pembayaran ===== */
+.pay-box {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.pay-box h4 {
+  color: var(--accent);
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+}
+
+.pay-qris {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto 14px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 8px;
+}
+
+.pay-detail {
+  margin-bottom: 12px;
+}
+
+.pay-detail .value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: right;
+  word-break: break-all;
+}
+
+.pay-copy-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pay-warn {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.pay-steps {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding-left: 18px;
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+
+.pay-wa {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+
